@@ -1,0 +1,25 @@
+{
+  "name": "backend-working-express",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "kill-port 3000 || true && nodemon src/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.6.3",
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "kill-port": "^2.0.1",
+    "morgan": "^1.10.1",
+    "nodemon": "^3.1.14"
+  }
+}
