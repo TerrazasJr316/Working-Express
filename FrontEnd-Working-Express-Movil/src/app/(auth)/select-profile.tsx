@@ -9,11 +9,11 @@ export default function SelectProfileScreen() {
     const router = useRouter();
 
     const handleSelectRole = (role: 'client' | 'professional') => {
-        // Aquí puedes guardar el rol en el estado global o contexto si es necesario
         if (role === 'client') {
-            router.replace('/(client)/(tabs)'); // O la ruta correspondiente para el flujo de cliente
+            router.replace('/');
         } else {
-            router.replace('/(professional)/(tabs)'); // O la ruta correspondiente para profesionales
+            // Apuntamos a la ubicación correcta dentro de tu árbol de carpetas
+            router.replace('/(worker)/onboarding');
         }
     };
 
