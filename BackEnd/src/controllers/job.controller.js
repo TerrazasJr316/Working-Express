@@ -1,5 +1,6 @@
 const Job = require('../models/Job.model');
 const User = require('../models/User.model');
+const socketConfig = require('../config/socket');
 
 // ==========================================
 // 1. PANTALLAS 2 Y 5 (CLIENTE): BÚSQUEDA GEOESPACIAL
@@ -50,7 +51,18 @@ const createJob = async (req, res, next) => {
             statusHistory: [{ status: 'PENDING' }]
         });
 
-        // Más adelante, aquí dispararemos el WebSocket para la Pantalla 8 del trabajador
+        // --- EMISIÓN WEBSOCKET ---
+        const io = socketConfig.getIO();
+        const connectedUsers = socketConfig.getConnectedUsers();
+
+        if (workerId) {
+            const workerSocketId = connectedUsers.get(workerId.toString());
+            if (workerSocketId) {
+                // Hace sonar el celular del trabajador
+                io.to(workerSocketId).emit('new_job_request', newJob);
+            }
+        }
+
         res.status(201).json({ success: true, data: newJob });
     } catch (error) { next(error); }
 };
@@ -115,7 +127,17 @@ const updateJobStatus = async (req, res, next) => {
 
         await job.save();
 
-        // Más adelante, aquí dispararemos el WebSocket para actualizar la app del cliente
+        const io = socketConfig.getIO();
+        const connectedUsers = socketConfig.getConnectedUsers();
+
+        // Le avisamos a Carlos si el técnico Aceptó, va En Camino, o llegó Al Sitio
+        if (status === 'ACCEPTED' || status === 'EN_ROUTE' || status === 'ON_SITE') {
+            const clientSocketId = connectedUsers.get(job.client.toString());
+            if (clientSocketId) {
+                io.to(clientSocketId).emit('job_status_updated', job);
+            }
+        }
+        
         res.status(200).json({ success: true, data: job });
     } catch (error) { next(error); }
 };
