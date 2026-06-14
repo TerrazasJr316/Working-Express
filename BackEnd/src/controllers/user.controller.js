@@ -10,7 +10,6 @@ const getProfile = async (req, res, next) => {
 };
 
 // Completar el Onboarding del Trabajador (Fase 3)
-// Completar el Onboarding del Trabajador (Fase 3)
 const updateWorkerProfile = async (req, res, next) => {
     try {
         if (req.user.role !== 'TRABAJADOR') {
@@ -81,7 +80,7 @@ const updateWorkerProfile = async (req, res, next) => {
 // Completar el perfil del Cliente (Fase 3 - Ubicación)
 const updateClientProfile = async (req, res, next) => {
     try {
-         if (req.user.role !== 'CLIENTE') {
+        if (req.user.role !== 'CLIENTE') {
             return res.status(403).json({ success: false, message: 'Solo los clientes pueden actualizar este perfil' });
         }
 
@@ -126,4 +125,23 @@ const updateProfilePicture = async (req, res, next) => {
     }
 }
 
-module.exports = { getProfile, updateWorkerProfile, updateClientProfile, updateProfilePicture };
+// Switch "¡En línea!"
+const toggleWorkerStatus = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'TRABAJADOR') {
+            return res.status(403).json({ success: false, message: 'Solo los trabajadores pueden cambiar este estado' });
+        }
+
+        const { isActive } = req.body; // Recibe un booleano (true o false)
+
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user._id,
+            { $set: { 'workerData.isActive': isActive } },
+            { new: true }
+        );
+
+        res.status(200).json({ success: true, isActive: updatedUser.workerData.isActive });
+    } catch (error) { next(error); }
+}
+
+module.exports = { getProfile, updateWorkerProfile, updateClientProfile, updateProfilePicture, toggleWorkerStatus };

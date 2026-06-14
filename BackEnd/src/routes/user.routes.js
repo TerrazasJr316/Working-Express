@@ -32,4 +32,7 @@ const workerUploads = upload.fields([
 router.put('/worker-profile', workerUploads, userController.updateWorkerProfile);
 router.put('/client-profile', userController.updateClientProfile);
 
+// Cambiar estado "¡En línea!"
+router.patch('/toggle-status', userController.toggleWorkerStatus);
+
 module.exports = router;

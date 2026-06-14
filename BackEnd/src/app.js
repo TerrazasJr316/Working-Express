@@ -5,6 +5,7 @@ const { errorHandler } = require('./middlewares/errorHandler');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const categoryRoutes = require('./routes/category.routes');
+const jobRoutes = require('./routes/job.routes');
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/jobs', jobRoutes);
 app.use('/uploads', express.static('uploads'));
 
 app.use(errorHandler);
