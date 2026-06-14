@@ -29,28 +29,128 @@ const userSchema = new mongoose.Schema({
         enum: ['CLIENTE', 'TRABAJADOR', 'ADMIN'],
         default: 'CLIENTE'
     },
+    
+    // Foto de perfil compartida para ambos roles
+    profilePictureUrl: {
+        type: String
+    }, 
 
     // --- FLUJOS DE VERIFICACIÓN Y SEGURIDAD ---
     isVerified: {
         type: Boolean,
-        default: false // Cambia a true cuando ingresan el código de la pantalla "Valida tu Identidad"
+        default: false
     },
     verificationCode: {
-        type: String // Aquí guardaremos el código de 4/6 dígitos temporalmente
+        type: String
     },
     verificationCodeExpires: {
-        type: Date // Fecha de expiración (ej. 15 minutos después del registro)
+        type: Date
     },
-    
-    // --- RECUPERACIÓN DE CONTRASEÑA ---
     resetPasswordCode: {
-        type: String // Código para el flujo "Olvidaste tu contraseña"
+        type: String
     },
     resetPasswordExpires: {
         type: Date
+    },
+
+    // --- DATOS EXCLUSIVOS DEL CLIENTE ---
+    clientData: {
+        address: {
+            street: {
+                type: String
+            }, // Calle
+            neighborhood: {
+                type: String
+            }, // Colonia
+            number: {
+                type: String
+            }, // Número Exterior/Interior
+            reference: {
+                type: String
+            }// Referencia
+        },
+        location: {
+            type: {
+                type: String,
+                enum: ['Point'],
+                default: 'Point'
+            },
+            coordinates: {
+                type: [Number],
+                default: [0, 0]
+            } // [longitud, latitud]
+        }
+    },
+
+    // --- DATOS EXCLUSIVOS DEL TRABAJADOR ---
+    workerData: {
+        jobCategory: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Category'
+        }, // Relación con el oficio
+        yearsOfExperience: {
+            type: Number
+        },
+        description: {
+            type: String
+        }, // Documentación y Seguridad
+        officialIdUrl: {
+            type: String
+        }, // Foto de Identificación
+        criminalRecordUrl: {
+            type: String
+        }, // Antecedentes Penales
+        
+        // Configuración de Trabajo
+        coverageRadius: {
+            type: Number, default: 5
+        }, // Slider de km
+        availableDays: [{
+            type: String,
+            enum: ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
+        }],
+        availableHours: {
+            start: {
+                type: String
+            }, // ej. "09:00"
+            end: {
+                type: String
+            }    // ej. "18:00"
+        },
+        
+        // Perfil y Métricas
+        portfolio: [{
+            type: String
+        }], // Galería de trabajos
+        baseVisitPrice: {
+            type: Number,
+            default: 0
+        }, // "Precio base de visita" (Visto en el wireframe 3)
+        isActive: {
+            type: Boolean,
+            default: false
+        }, // Toggle "¡En línea!"
+        rating: {
+            type: Number,
+            default: 0
+        },
+        
+        location: {
+            type: {
+                type: String,
+                enum: ['Point'],
+                default: 'Point'
+            },
+            coordinates: {
+                type: [Number],
+                default: [0, 0]
+            } // [longitud, latitud]
+        }
     }
-}, { 
-    timestamps: true 
-});
+}, { timestamps: true });
+
+// Índices geoespaciales para el radar de búsqueda (Vitales para MongoDB)
+userSchema.index({ "clientData.location": "2dsphere" });
+userSchema.index({ "workerData.location": "2dsphere" });
 
 module.exports = mongoose.model('User', userSchema);
