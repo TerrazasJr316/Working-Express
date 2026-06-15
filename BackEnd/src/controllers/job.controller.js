@@ -250,4 +250,62 @@ const getWorkerEarnings = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
-module.exports = { getNearbyWorkers, createJob, getIncomingJobs, getMyJobs, updateJobStatus, getWorkerEarnings };
+// ==========================================
+// 7. SISTEMA DE RESEÑAS (CALIFICAR AL TRABAJADOR)
+// ==========================================
+const addJobReview = async (req, res, next) => {
+    try {
+        const { id } = req.params; // ID del trabajo finalizado
+        const { score, comment } = req.body;
+
+        // 1. Validaciones básicas de seguridad
+        if (req.user.role !== 'CLIENTE') {
+            return res.status(403).json({ success: false, message: 'Solo los clientes pueden dejar reseñas' });
+        }
+
+        if (!score || score < 1 || score > 5) {
+            return res.status(400).json({ success: false, message: 'La calificación debe ser entre 1 y 5 estrellas' });
+        }
+
+        const job = await Job.findById(id);
+
+        if (!job) return res.status(404).json({ success: false, message: 'Trabajo no encontrado' });
+        
+        if (job.status !== 'COMPLETED') {
+            return res.status(400).json({ success: false, message: 'Solo puedes calificar trabajos finalizados' });
+        }
+
+        if (job.rating && job.rating.score) {
+            return res.status(400).json({ success: false, message: 'Ya has calificado este servicio anteriormente' });
+        }
+
+        // 2. Guardar la calificación dentro del trabajo
+        job.rating = { score, comment };
+        await job.save();
+
+        // 3. Recalcular el promedio total del trabajador (La magia matemática)
+        const workerJobs = await Job.find({ 
+            worker: job.worker, 
+            'rating.score': { $exists: true } 
+        });
+
+        const totalReviews = workerJobs.length;
+        const sumScores = workerJobs.reduce((acc, curr) => acc + curr.rating.score, 0);
+        const averageRating = (sumScores / totalReviews).toFixed(1); // Redondea a 1 decimal (ej. 4.8)
+
+        // 4. Actualizar el promedio en el perfil del trabajador
+        await User.findByIdAndUpdate(job.worker, {
+            $set: { 'workerData.rating': parseFloat(averageRating) }
+        });
+
+        res.status(200).json({ 
+            success: true, 
+            message: 'Reseña guardada exitosamente', 
+            data: job.rating,
+            newWorkerAverage: averageRating
+        });
+
+    } catch (error) { next(error); }
+};
+
+module.exports = { getNearbyWorkers, createJob, getIncomingJobs, getMyJobs, updateJobStatus, getWorkerEarnings, addJobReview };
