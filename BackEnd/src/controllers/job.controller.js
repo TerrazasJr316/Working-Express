@@ -1,6 +1,7 @@
 const Job = require('../models/Job.model');
 const User = require('../models/User.model');
 const socketConfig = require('../config/socket');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // ==========================================
 // 1. PANTALLAS 2 Y 5 (CLIENTE): BÚSQUEDA GEOESPACIAL
@@ -37,7 +38,7 @@ const getNearbyWorkers = async (req, res, next) => {
 // ==========================================
 const createJob = async (req, res, next) => {
     try {
-        const { workerId, categoryId, description, address, location, basePrice, isEmergency } = req.body;
+        const { workerId, categoryId, description, address, location, basePrice, isEmergency, paymentMethod } = req.body;
 
         const newJob = await Job.create({
             client: req.user._id,
@@ -48,6 +49,7 @@ const createJob = async (req, res, next) => {
             location,
             basePrice,
             isEmergency,
+            paymentMethod,
             statusHistory: [{ status: 'PENDING' }]
         });
 
@@ -120,9 +122,50 @@ const updateJobStatus = async (req, res, next) => {
         job.status = status;
         job.statusHistory.push({ status, changedAt: Date.now() });
 
+        // --- LÓGICA DE CIERRE Y COBRO ---
         if (status === 'COMPLETED') {
             job.completedAt = Date.now();
             if (finalPrice) job.finalPrice = finalPrice;
+
+            // Integración REAL con Stripe
+            if (job.paymentMethod === 'CARD') {
+                try {
+                    const montoCobrar = finalPrice || job.basePrice;
+                    
+                    // Stripe SIEMPRE cobra en centavos. Ej: $350.00 MXN se envían como 35000
+                    const amountInCents = Math.round(montoCobrar * 100);
+
+                    console.log(`Conectando con Stripe para cobrar $${montoCobrar} MXN...`);
+
+                    const paymentIntent = await stripe.paymentIntents.create({
+                        amount: amountInCents,
+                        currency: 'mxn',
+                        description: `Working Express - Servicio completado. ID: ${job._id}`,
+                    //  payment_method: req.body.stripePaymentMethodId, Lo que recibiremos de la app real
+                        payment_method: 'pm_card_visa', // Comodín de prueba de Stripe
+                        confirm: true, // Forzamos el cobro inmediato
+                        automatic_payment_methods: {
+                            enabled: true,
+                            allow_redirects: 'never'
+                        }
+                    });
+
+                    console.log(`¡Cobro exitoso en Stripe! ID de Transacción: ${paymentIntent.id}`);
+                    job.paymentStatus = 'PAID';
+
+                } catch (stripeError) {
+                    console.error('Error de Stripe:', stripeError.message);
+                    // Si la tarjeta falla (fondos insuficientes), detenemos el proceso
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: 'El cobro a la tarjeta falló, pide el pago en efectivo.', 
+                        error: stripeError.message 
+                    });
+                }
+            } else if (job.paymentMethod === 'CASH') {
+                console.log(`Pago en efectivo confirmado en mano`);
+                job.paymentStatus = 'PAID';
+            }
         }
 
         await job.save();
@@ -131,9 +174,10 @@ const updateJobStatus = async (req, res, next) => {
         const connectedUsers = socketConfig.getConnectedUsers();
 
         // Le avisamos a Carlos si el técnico Aceptó, va En Camino, o llegó Al Sitio
-        if (status === 'ACCEPTED' || status === 'EN_ROUTE' || status === 'ON_SITE') {
+        if (['ACCEPTED', 'EN_ROUTE', 'ON_SITE', 'COMPLETED'].includes(status)) {
             const clientSocketId = connectedUsers.get(job.client.toString());
             if (clientSocketId) {
+                // Si es COMPLETED, este evento es el que detonará el recibo y las 5 estrellas en la app móvil
                 io.to(clientSocketId).emit('job_status_updated', job);
             }
         }
@@ -142,4 +186,68 @@ const updateJobStatus = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
-module.exports = { getNearbyWorkers, createJob, getIncomingJobs, getMyJobs, updateJobStatus };
+// ==========================================
+// 6. DASHBOARD DEL TRABAJADOR (GANANCIAS Y CORTES DE CAJA)
+// Calcula: Hoy, Semanal, Mensual y devuelve las transacciones
+// ==========================================
+const getWorkerEarnings = async (req, res, next) => {
+    try {
+        if (req.user.role !== 'TRABAJADOR') {
+            return res.status(403).json({ success: false, message: 'Solo autorizado para trabajadores' });
+        }
+
+        const now = new Date();
+
+        // 1. Calcular las fronteras de tiempo exactas usando JavaScript nativo
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        const startOfWeek = new Date(startOfToday);
+        startOfWeek.setDate(startOfToday.getDate() - startOfToday.getDay()); // Retrocede al Domingo
+
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // 2. Traer TODOS los trabajos PAGADOS de este mes (Una sola consulta a la BD)
+        const monthlyJobs = await Job.find({
+            worker: req.user._id,
+            status: 'COMPLETED',
+            paymentStatus: 'PAID',
+            completedAt: { $gte: startOfMonth }
+        })
+        .populate('category', 'name')
+        .sort('-completedAt'); // Los más recientes primero para la lista de "Transacciones (Detalle)"
+
+        // 3. Variables para nuestros 3 filtros
+        let dailyTotal = 0;
+        let weeklyTotal = 0;
+        let monthlyTotal = 0;
+
+        // 4. Filtrar y sumar en memoria (Súper rápido)
+        monthlyJobs.forEach(job => {
+            const amount = job.finalPrice || job.basePrice;
+            
+            monthlyTotal += amount; // Si está en la consulta, es de este mes
+
+            if (job.completedAt >= startOfWeek) {
+                weeklyTotal += amount;
+            }
+            if (job.completedAt >= startOfToday) {
+                dailyTotal += amount;
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                totals: {
+                    today: dailyTotal,
+                    thisWeek: weeklyTotal,
+                    thisMonth: monthlyTotal
+                },
+                transactions: monthlyJobs // La lista para el SCROLL de tu wireframe
+            }
+        });
+
+    } catch (error) { next(error); }
+};
+
+module.exports = { getNearbyWorkers, createJob, getIncomingJobs, getMyJobs, updateJobStatus, getWorkerEarnings };

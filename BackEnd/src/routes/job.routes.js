@@ -11,6 +11,7 @@ router.post('/', jobController.createJob);
 
 // Flujo del Trabajador
 router.get('/incoming', jobController.getIncomingJobs);
+router.get('/earnings', jobController.getWorkerEarnings);
 router.patch('/:id/status', jobController.updateJobStatus);
 
 // Flujo Compartido (Pantalla Mis Servicios)
